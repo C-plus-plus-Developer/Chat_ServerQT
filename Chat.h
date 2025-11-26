@@ -18,7 +18,7 @@
 
 #define PORT 7777
 #define MESSAGE_LENGTH 1024
-#define MAX_THREADS 50
+#define MAX_THREADS 50 //Максимальное кол-во клиентов
 
 using namespace MySha;
 
