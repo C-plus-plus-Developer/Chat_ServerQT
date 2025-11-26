@@ -405,6 +405,8 @@ void MainWindow::setupUI()
     // Начальное сообщение
     logTextEdit->append(QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]") + " Готов к запуску...");
 }
+
+
 void MainWindow::loadTestData()
 {
     adminsList->clear();
@@ -527,43 +529,41 @@ void MainWindow::refreshAdminList() {
         return;
     }
 
-    // Список админов
     QStringList admins = serverController->getAdminList();
 
+    // Сохраняем текущее выделение
     QList<QListWidgetItem*> currentSelection = adminsList->selectedItems();
     QString selectedLogin;
     if (!currentSelection.isEmpty()) {
-        QString selectedText = currentSelection.first()->text();
-        int bracketIndex = selectedText.indexOf("(");
-        if (bracketIndex != -1) {
-            selectedLogin = selectedText.left(bracketIndex).trimmed();
-        }
+        selectedLogin = currentSelection.first()->text();
     }
 
     // Обновляем список
     adminsList->clear();
-    adminsList->addItems(admins);
-    adminsCountLabel->setText(QString("Всего: %1").arg(admins.size()));
 
+    for (const QString& login : admins) {
+        if (!login.isEmpty()) {
+            adminsList->addItem(login);
+        }
+    }
+
+    adminsCountLabel->setText(QString("Всего: %1").arg(adminsList->count()));
+
+    // Восстанавливаем выделение
     if (!selectedLogin.isEmpty()) {
         for (int i = 0; i < adminsList->count(); ++i) {
             QListWidgetItem* item = adminsList->item(i);
-            QString itemText = item->text();
-            int brIndex = itemText.indexOf("(");
-            if (brIndex != -1) {
-                QString itemLogin = itemText.left(brIndex).trimmed();
-                if (itemLogin == selectedLogin) {
-                    item->setSelected(true);
-                    adminsList->setCurrentItem(item);
-                    break;
-                }
+            if (item->text() == selectedLogin) {
+                item->setSelected(true);
+                adminsList->setCurrentItem(item);
+                break;
             }
         }
     }
 
     // Обновляем состояние кнопок
     bool hasSelection = !adminsList->selectedItems().isEmpty();
-    bool canRemove = admins.size() > 1 && hasSelection;
+    bool canRemove = adminsList->count() > 1 && hasSelection;
 
     removeAdminButton->setEnabled(canRemove);
     changePasswordButton->setEnabled(hasSelection);
@@ -571,7 +571,7 @@ void MainWindow::refreshAdminList() {
     refreshAdminButton->setEnabled(true);
 
     // Обновляем подсказки
-    if (admins.size() <= 1) {
+    if (adminsList->count() <= 1) {
         removeAdminButton->setToolTip("Нельзя удалить последнего администратора");
         removeAdminButton->setEnabled(false);
     } else if (!hasSelection) {
@@ -582,7 +582,6 @@ void MainWindow::refreshAdminList() {
         removeAdminButton->setEnabled(true);
     }
 }
-
 
 void MainWindow::updateStatistics()
 {
@@ -670,42 +669,16 @@ void MainWindow::removeAdmin() {
         return;
     }
 
-    QString adminInfo = selected.first()->text();
-
-    // Извлечение логина
-    QString login;
-
-    int bracketIndex = adminInfo.indexOf("(");
-    if (bracketIndex != -1) {
-        login = adminInfo.left(bracketIndex).trimmed();
-    } else {
-        login = adminInfo.trimmed();
-    }
+    QString login = selected.first()->text().trimmed(); // Теперь это просто логин
 
     if (login.isEmpty()) {
-        QMessageBox::warning(this, "Ошибка",
-                             "Не удалось извлечь логин администратора!\n"
-                             "Формат строки: " + adminInfo);
+        QMessageBox::warning(this, "Ошибка", "Не удалось извлечь логин администратора!");
         return;
     }
 
-    qDebug() << "Final login to remove:" << login;
-
+    // Проверяем существование админа
     QStringList currentAdmins = serverController->getAdminList();
-    bool adminExists = false;
-    QString foundLogin;
-
-    for (const QString& admin : currentAdmins) {
-        int brIndex = admin.indexOf("(");
-        if (brIndex != -1) {
-            QString currentLogin = admin.left(brIndex).trimmed();
-            if (currentLogin == login) {
-                adminExists = true;
-                foundLogin = currentLogin;
-                break;
-            }
-        }
-    }
+    bool adminExists = currentAdmins.contains(login);
 
     if (!adminExists) {
         QMessageBox::warning(this, "Ошибка",
@@ -718,32 +691,31 @@ void MainWindow::removeAdmin() {
 
     // Просим подтвердить удаление
     QMessageBox::StandardButton reply = QMessageBox::question(this,
-                                        "Подтверждение удаления",
-                                        QString("Вы уверены, что хотите удалить администратора?\n\n"
-                                        "Логин: %1\n\n"
-                                        "После удаления этот администратор не сможет заходить в админ-панель.")
-                                        .arg(login),
-                                        QMessageBox::Yes | QMessageBox::No,
-                                        QMessageBox::No); // По умолчанию "нет"
+                                                              "Подтверждение удаления",
+                                                              QString("Вы уверены, что хотите удалить администратора?\n\n"
+                                                                      "Логин: %1\n\n"
+                                                                      "После удаления этот администратор не сможет заходить в админ-панель.")
+                                                                  .arg(login),
+                                                              QMessageBox::Yes | QMessageBox::No,
+                                                              QMessageBox::No);
 
     if (reply == QMessageBox::Yes) {
         logTextEdit->append(QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]") +
-                            "Попытка удаления администратора: " + login);
+                            " Попытка удаления администратора: " + login);
 
         bool success = serverController->removeAdmin(login);
 
         if (success) {
             logTextEdit->append(QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]") +
-                                "Удален администратор: " + login);
+                                " Удален администратор: " + login);
             QMessageBox::information(this, "Успех",
                                      QString("Администратор '%1' успешно удален!").arg(login));
 
             // После удаления обновляем админов
             refreshAdminList();
         } else {
-            // Если админ последний или другая ошибка
             logTextEdit->append(QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]") +
-                                "Ошибка удаления администратора: " + login);
+                                " Ошибка удаления администратора: " + login);
             QMessageBox::warning(this, "Ошибка",
                                  QString("Не удалось удалить администратора '%1'!\n\n"
                                          "Возможные причины:\n"
