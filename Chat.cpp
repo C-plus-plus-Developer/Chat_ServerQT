@@ -217,7 +217,8 @@ void Chat::UserPanel(int clientSocket) {
 
 bool Chat::AdminLogin(std::string login, std::string pass){
     auto it = adminAkk.find(login);
-    return it != adminAkk.end() && it->second == pass;
+    std::string HashPass = MySha::sha1(pass.c_str(), pass.size());
+    return it != adminAkk.end() && it->second == HashPass;
 }
 
 void Chat::AdminPanel(int clientSocket){
@@ -475,7 +476,7 @@ bool Chat::addAdmin(const std::string& login, const std::string& password) {
     }
 
     // Добавляем нового админа
-    adminAkk[login] = password;
+    adminAkk[login] = MySha::sha1(password.c_str(), password.size());
     std::cout << "Admin '" << login << "' added successfully!" << std::endl;
 
     saveAdminsToFile();
@@ -488,19 +489,20 @@ bool Chat::removeAdmin(const std::string& login) {
 
     std::lock_guard<std::mutex> lock(KlientMutex);
 
-    // вывод в консоль всех админов
+    // Вывод в консоль всех админов для отладки
     std::cout << "Current admins (" << adminAkk.size() << "): ";
     for (const auto& admin : adminAkk) {
         std::cout << "[" << admin.first << "] ";
     }
     std::cout << std::endl;
 
+    // Проверка на минимальное количество админов
     if (adminAkk.size() <= 1) {
         std::cout << "ERROR: Cannot remove last admin. Total: " << adminAkk.size() << std::endl;
         return false;
     }
 
-    // Поиск админа
+    // Поиск админа (прямое сравнение логинов)
     auto it = adminAkk.find(login);
     if (it == adminAkk.end()) {
         std::cout << "ERROR: Admin '" << login << "' not found!" << std::endl;
@@ -512,11 +514,20 @@ bool Chat::removeAdmin(const std::string& login) {
         return false;
     }
 
+    // Удаляем админа
     adminAkk.erase(it);
-    std::cout << "Admin '" << login << "' removed!" << std::endl;
+    std::cout << "Admin '" << login << "' removed successfully!" << std::endl;
 
+    // Сохраняем изменения в файл
     saveAdminsToFile();
     std::cout << "Admins saved to file" << std::endl;
+
+    // Дополнительная проверка после удаления
+    std::cout << "Remaining admins (" << adminAkk.size() << "): ";
+    for (const auto& admin : adminAkk) {
+        std::cout << "[" << admin.first << "] ";
+    }
+    std::cout << std::endl;
 
     return true;
 }
@@ -531,8 +542,9 @@ bool Chat::changeAdminPassword(const std::string& login, const std::string& newP
         return false;
     }
 
+    std::string HashedPassword = MySha::sha1(newPassword.c_str(), newPassword.size());
     // Меняем пароль
-    it->second = newPassword;
+    it->second = HashedPassword;
     std::cout << "Password for admin '" << login << "' changed successfully!" << std::endl;
 
     saveAdminsToFile();
@@ -544,7 +556,7 @@ std::vector<std::string> Chat::getAdminList() const {
     std::vector<std::string> admins;
 
     for (const auto& admin : adminAkk) {
-        admins.push_back(admin.first + " (" + admin.second + ")");
+        admins.push_back(admin.first);
     }
 
     return admins;
@@ -578,9 +590,11 @@ void Chat::loadAdminsFromFile() {
             std::cout << "Admin file not found, creating default admins..." << std::endl;
 
             // Создаем админов по умолчанию
+            std::string adminPassOne = "admin123";
+            std::string adminPassTwo = "moder123";
             adminAkk = {
-                {"admin", "admin123"},
-                {"moder", "moder123"}
+                        {"admin", MySha::sha1(adminPassOne.c_str(), adminPassOne.size())},
+                        {"moder", MySha::sha1(adminPassTwo.c_str(), adminPassTwo.size())}
             };
             saveAdminsToFile();
             return;
